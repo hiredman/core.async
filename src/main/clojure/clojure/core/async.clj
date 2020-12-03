@@ -276,6 +276,7 @@ to catch and handle."
         n (count ports)
         ^ints idxs (random-array n)
         priority (:priority opts)
+        fret-ref (atom (fn [r result] (reset! r nil) (fret result)))
         ret
         (loop [i 0]
           (when (< i n)
@@ -284,10 +285,12 @@ to catch and handle."
                   wport (when (vector? port) (port 0))
                   vbox (if wport
                          (let [val (port 1)]
-                           (impl/put! wport val (alt-handler flag #(fret [% wport]))))
-                         (impl/take! port (alt-handler flag #(fret [% port]))))]
+                           (impl/put! wport val (alt-handler flag #(@fret-ref fret-ref [% wport]))))
+                         (impl/take! port (alt-handler flag #(@fret-ref fret-ref [% port]))))]
               (if vbox
-                (channels/box [@vbox (or wport port)])
+                (do
+                  (reset! fret-ref nil)
+                  (channels/box [@vbox (or wport port)]))
                 (recur (inc i))))))]
     (or
      ret
@@ -296,6 +299,7 @@ to catch and handle."
        (let [got (and (impl/active? flag) (impl/commit flag))]
          (.unlock ^Lock flag)
          (when got
+           (reset! fret-ref nil)
            (channels/box [(:default opts) :default])))))))
 
 (defblockingop alts!!
