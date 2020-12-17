@@ -25,6 +25,7 @@ to catch and handle."
             [clojure.core.async.impl.channels :as channels]
             [clojure.core.async.impl.buffers :as buffers]
             [clojure.core.async.impl.timers :as timers]
+            [clojure.core.async.impl.timers2 :as timers2]
             [clojure.core.async.impl.dispatch :as dispatch]
             [clojure.core.async.impl.ioc-macros :as ioc]
             [clojure.core.async.impl.mutex :as mutex]
@@ -110,6 +111,11 @@ to catch and handle."
   "Returns a channel that will close after msecs"
   [^long msecs]
   (timers/timeout msecs))
+
+(defn timeout2
+  "Returns a channel that will close after msecs"
+  [^long msecs]
+  (timers2/timeout msecs))
 
 (defmacro defblockingop
   [op doc arglist & body]
