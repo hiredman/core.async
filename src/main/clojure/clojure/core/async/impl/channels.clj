@@ -300,3 +300,61 @@
                (add! buf val)
                (catch Throwable t
                  (handle buf exh t)))))))))
+
+(def nack-sentinel (Object.))
+
+(deftype NackChannel [^:volatile-mutable value
+                      ^objects ^:unsynchronized-mutable readers]
+  impl/ReadPort
+  (take! [port fn1-handler]
+    (let [v value]
+      (if (some? v)
+        (if (identical? v nack-sentinel)
+          (box nil)
+          (box v))
+        (locking port
+          (if (some? value)
+            (if (identical? value nack-sentinel)
+              (box nil)
+              (box value))
+            (do
+              (set! readers
+                    (doto (object-array 2)
+                      (aset 0 fn1-handler)
+                      (aset 1 readers)))
+              nil))))))
+  impl/WritePort
+  (put! [port val fn1-handler]
+    (let [v value]
+      (if v
+        (if (identical? v nack-sentinel)
+          (box false)
+          (box true))
+        (locking port
+          (if value
+            (if (identical? value nack-sentinel)
+              (box false)
+              (box true))
+            (do
+              (set! value val)
+              (while readers
+                (let [^Lock r (aget readers 0)]
+                  (.lock r)
+                  (when-let [good (and (impl/active? r)
+                                       (impl/commit r))]
+                    (dispatch/run (fn [] (good val))))
+                  (.unlock r)
+                  (set! readers (aget readers 1))))
+              (box true)))))))
+  impl/Channel
+  (close! [chan]
+    (set! value nack-sentinel))
+  (closed? [chan]
+    (identical? value nack-sentinel)))
+
+(defn nack-channel
+  "A memory minimal cut down channel implementation for communicating
+  nacks. Semantics are similar to a promise chan. For internal use
+  only."
+  []
+  (NackChannel. nil nil))

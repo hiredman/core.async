@@ -28,6 +28,9 @@
   (lock-id [h] "a unique id for lock acquisition order, 0 if no lock")
   (commit [h] "commit to fulfilling its end of the transfer, returns cb. Must be called within lock"))
 
+(defprotocol NackableHandler
+  (nack-channel [h]))
+
 (defprotocol Buffer
   (full? [b] "returns true if buffer cannot accept put")
   (remove! [b] "remove and return next item from buffer, called under chan mutex")

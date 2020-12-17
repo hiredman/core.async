@@ -254,19 +254,22 @@ to catch and handle."
              (reset! flag nil)
              true))))
 
-(defn- alt-handler [^Lock flag cb]
+(defn- alt-handler [^Lock flag cb nack]
   (reify
-     Lock
-     (lock [_] (.lock flag))
-     (unlock [_] (.unlock flag))
-
-     impl/Handler
-     (active? [_] (impl/active? flag))
-     (blockable? [_] true)
-     (lock-id [_] (impl/lock-id flag))
-     (commit [_]
-             (impl/commit flag)
-             cb)))
+    Lock
+    (lock [_] (.lock flag))
+    (unlock [_] (.unlock flag))
+    impl/Handler
+    (active? [_] (impl/active? flag))
+    (blockable? [_] true)
+    (lock-id [_] (impl/lock-id flag))
+    (commit [this]
+      (impl/commit flag)
+      (put! nack this)
+      cb)
+    impl/NackableHandler
+    (nack-channel [_]
+      nack)))
 
 (defn do-alts
   "returns derefable [val port] if immediate, nil if enqueued"
@@ -277,6 +280,7 @@ to catch and handle."
         ^ints idxs (random-array n)
         priority (:priority opts)
         fret-ref (atom (fn [r result] (reset! r nil) (fret result)))
+        nack (channels/nack-channel)
         ret
         (loop [i 0]
           (when (< i n)
@@ -285,8 +289,8 @@ to catch and handle."
                   wport (when (vector? port) (port 0))
                   vbox (if wport
                          (let [val (port 1)]
-                           (impl/put! wport val (alt-handler flag #(@fret-ref fret-ref [% wport]))))
-                         (impl/take! port (alt-handler flag #(@fret-ref fret-ref [% port]))))]
+                           (impl/put! wport val (alt-handler flag #(@fret-ref fret-ref [% wport]) nack)))
+                         (impl/take! port (alt-handler flag #(@fret-ref fret-ref [% port]) nack)))]
               (if vbox
                 (do
                   (reset! fret-ref nil)
